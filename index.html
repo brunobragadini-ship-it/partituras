@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Auto Scroll Partituras</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <style>
+        :root {
+            --bg-main: #000000;
+            --bg-header: #050505;
+            --bg-card: #0d0d0d;
+            --bg-card-hover: #141414;
+            --border-color: #ffaa00;
+            --accent-yellow: #ffaa00;
+            --accent-yellow-hover: #ffbb22;
+            --accent-red: #ff3333;
+            --accent-red-hover: #ff5555;
+            --text-primary: #ffeedd;
+            --text-secondary: #cc8800;
+            --radius-lg: 16px;
+            --radius-md: 10px;
+            --radius-sm: 6px;
+        }
+
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
+            margin: 0; 
+            background: var(--bg-main); 
+            color: var(--text-primary); 
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+        }
+        
+        /* Cabeçalho Horizontal Superior */
+        #header {
+            width: 100%;
+            background: var(--bg-header);
+            box-sizing: border-box;
+            padding: 12px 20px;
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            border-bottom: 1px solid rgba(255, 170, 0, 0.2);
+            z-index: 2000;
+            flex-shrink: 0;
+        }
+
+        .header-title-area {
+            display: flex;
+            flex-direction: column;
+            min-width: 150px;
+        }
+
+        h3 {
+            font-size: 15px;
+            font-weight: 600;
+            margin: 0;
+            color: var(--accent-yellow);
+            text-shadow: 0 0 8px rgba(255, 170, 0, 0.4);
+        }
+
+        .upload-label {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--bg-card);
+            border: 2px dashed rgba(255, 170, 0, 0.4);
+            padding: 8px 14px;
+            border-radius: var(--radius-md);
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--text-secondary);
+            transition: all 0.2s ease;
+            white-space: nowrap;
+            box-shadow: inset 0 0 10px rgba(255, 170, 0, 0.05);
+        }
+        .upload-label:hover {
+            border-color: var(--accent-yellow);
+            color: var(--text-primary);
+            background: var(--bg-card-hover);
+            box-shadow: 0 0 12px rgba(255, 170, 0, 0.2), inset 0 0 15px rgba(255, 170, 0, 0.1);
+        }
+        input[type="file"] { display: none; }
+
+        #pdf-list {
+            display: flex;
+            flex-direction: row;
+            gap: 10px;
+            overflow-x: auto;
+            flex-grow: 1;
+            padding-bottom: 4px;
+            align-items: center;
+        }
+        #pdf-list::-webkit-scrollbar { height: 4px; }
+        #pdf-list::-webkit-scrollbar-thumb { background: rgba(255, 170, 0, 0.3); border-radius: 4px; }
+
+        .pdf-item { 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+            background: var(--bg-card); 
+            padding: 8px 12px; 
+            border-radius: var(--radius-md); 
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border: 1px solid rgba(255, 170, 0, 0.15);
+            white-space: nowrap;
+            flex-shrink: 0;
+            gap: 10px;
+        }
+        .pdf-item:hover { 
+            background: var(--bg-card-hover); 
+            border-color: rgba(255, 170, 0, 0.6);
+            transform: translateY(-1px);
+            box-shadow: 0 0 10px rgba(255, 170, 0, 0.15);
+        }
+        .pdf-item.active {
+            border-color: var(--accent-yellow);
+            background: rgba(255, 170, 0, 0.1);
+            box-shadow: 0 0 15px rgba(255, 170, 0, 0.25);
+        }
+        .pdf-item span { 
+            overflow: hidden; 
+            text-overflow: ellipsis; 
+            max-width: 150px; 
+            font-size: 13px;
+            font-weight: 500;
+        }
+
+        /* Área principal com rolagem */
+        #main-content {
+            flex-grow: 1;
+            height: calc(100vh - 70px);
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            position: relative;
+            background: #000000;
+        }
+
+        #pdf-container { 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            gap: 20px; 
+            padding: 40px 20px 140px 20px; 
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        canvas { 
+            max-width: 90%; 
+            height: auto; 
+            box-shadow: 0 0 25px rgba(255, 170, 0, 0.15); 
+            border-radius: 8px;
+            background: #fff;
+            border: 1px solid rgba(255, 170, 0, 0.3);
+        }
+
+        /* Barra Flutuante Estilizada Estilo Pílula */
+        #controls { 
+            position: fixed; 
+            bottom: 25px; 
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(5, 5, 5, 0.95); 
+            padding: 12px 24px; 
+            display: flex; 
+            gap: 20px; 
+            justify-content: center; 
+            align-items: center; 
+            z-index: 1000; 
+            border-radius: 50px;
+            box-shadow: 0 0 30px rgba(255, 170, 0, 0.25);
+            border: 1px solid rgba(255, 170, 0, 0.5);
+            backdrop-filter: blur(12px);
+        }
+
+        button, input[type="range"] { 
+            font-size: 13px; 
+            border-radius: var(--radius-sm); 
+            border: none; 
+            cursor: pointer; 
+            font-family: inherit;
+        }
+        
+        button { 
+            background: var(--accent-yellow); 
+            color: #000000; 
+            font-weight: 700; 
+            padding: 8px 18px;
+            border-radius: var(--radius-sm);
+            transition: all 0.2s;
+            box-shadow: 0 0 10px rgba(255, 170, 0, 0.4);
+        }
+        button:hover { 
+            background: var(--accent-yellow-hover); 
+            box-shadow: 0 0 18px rgba(255, 170, 0, 0.7);
+        }
+        button:active { transform: scale(0.96); }
+        
+        button.pause { 
+            background: var(--accent-red); 
+            color: #fff;
+            box-shadow: 0 0 10px rgba(255, 51, 51, 0.4);
+        }
+        button.pause:hover { 
+            background: var(--accent-red-hover); 
+            box-shadow: 0 0 18px rgba(255, 51, 51, 0.7);
+        }
+        
+        button.danger { 
+            background: transparent; 
+            color: var(--text-secondary); 
+            padding: 2px 6px; 
+            font-size: 11px; 
+            border-radius: 4px;
+            box-shadow: none;
+        }
+        button.danger:hover { 
+            background: rgba(255, 51, 51, 0.2); 
+            color: var(--accent-red); 
+            box-shadow: 0 0 8px rgba(255, 51, 51, 0.3);
+        }
+
+        input[type="range"] {
+            accent-color: var(--accent-yellow);
+            background: transparent;
+            cursor: pointer;
+        }
+
+        label {
+            font-size: 13px;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--text-secondary);
+        }
+
+        .empty-state {
+            margin-top: 100px;
+            color: var(--text-secondary);
+            font-size: 14px;
+            text-align: center;
+            text-shadow: 0 0 10px rgba(255, 170, 0, 0.2);
+        }
+
+        /* Responsividade para celulares */
+        @media (max-width: 768px) {
+            #header { flex-direction: column; align-items: stretch; gap: 10px; }
+            #pdf-list { width: 100%; }
+            .header-title-area { flex-direction: row; justify-content: space-between; align-items: center; }
+            #controls { width: 90%; justify-content: space-between; box-sizing: border-box; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Cabeçalho Horizontal Superior -->
+    <div id="header">
+        <div class="header-title-area">
+            <div>
+                <h3>Biblioteca</h3>
+                <span style="font-size:11px; color:var(--text-secondary);">Partituras</span>
+            </div>
+            <label class="upload-label">
+                📁 + Adicionar
+                <input type="file" id="file-input" accept="application/pdf" multiple>
+            </label>
+        </div>
+        
+        <div id="pdf-list"></div>
+    </div>
+
+    <!-- Conteúdo Principal -->
+    <div id="main-content">
+        <div id="pdf-container">
+            <div class="empty-state">
+                <p style="font-size: 32px; margin: 0 0 10px 0;">🎵</p>
+                <p>Nenhuma partitura selecionada.<br>Escolha uma no menu acima para começar.</p>
+            </div>
+        </div>
+
+        <!-- Barra Flutuante Estilizada -->
+        <div id="controls">
+            <button id="play-btn">Play</button>
+            <label>Velocidade: <input type="range" id="speed" min="0.5" max="5" step="0.5" value="1.5"></label>
+        </div>
+    </div>
+
+    <script>
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        
+        let db;
+        let scrollInterval = null;
+        let isPlaying = false;
+        let activePDFId = null;
+
+        const request = indexedDB.open('SheetMusicAppDB', 1);
+        request.onsuccess = (e) => {
+            db = e.target.result;
+            loadPDFList();
+        };
+        request.onupgradeneeded = (e) => {
+            db = e.target.result;
+            if (!db.objectStoreNames.contains('pdfs')) {
+                db.createObjectStore('pdfs', { keyPath: 'id', autoIncrement: true });
+            }
+        };
+
+        document.getElementById('file-input').addEventListener('change', (e) => {
+            const files = e.target.files;
+            if (!files.length) return;
+
+            const transaction = db.transaction(['pdfs'], 'readwrite');
+            const store = transaction.objectStore('pdfs');
+
+            for (let i = 0; i < files.length; i++) {
+                store.add({ name: files[i].name, blob: files[i] });
+            }
+
+            transaction.oncomplete = () => {
+                e.target.value = '';
+                loadPDFList();
+            };
+        });
+
+        function loadPDFList() {
+            const listEl = document.getElementById('pdf-list');
+            listEl.innerHTML = '';
+            const transaction = db.transaction(['pdfs'], 'readonly');
+            const store = transaction.objectStore('pdfs');
+            const request = store.openCursor();
+
+            request.onsuccess = (e) => {
+                const cursor = e.target.result;
+                if (cursor) {
+                    const currentId = cursor.value.id;
+                    const item = document.createElement('div');
+                    item.className = `pdf-item ${currentId === activePDFId ? 'active' : ''}`;
+                    item.innerHTML = `
+                        <span title="${cursor.value.name}">${cursor.value.name}</span>
+                        <button class="danger" onclick="deletePDF(event, ${currentId})">✕</button>
+                    `;
+                    item.onclick = (ev) => {
+                        if (ev.target.tagName !== 'BUTTON') {
+                            selectPDF(currentId);
+                        }
+                    };
+                    listEl.appendChild(item);
+                    cursor.continue();
+                } else if (listEl.innerHTML === '') {
+                    listEl.innerHTML = '<p style="color:var(--text-secondary); font-size:12px; margin: auto;">Nenhuma partitura salva.</p>';
+                }
+            };
+        }
+
+        window.deletePDF = function(event, id) {
+            event.stopPropagation();
+            const transaction = db.transaction(['pdfs'], 'readwrite');
+            const store = transaction.objectStore('pdfs');
+            store.delete(id);
+            transaction.oncomplete = () => {
+                if (activePDFId === id) {
+                    activePDFId = null;
+                    document.getElementById('pdf-container').innerHTML = `
+                        <div class="empty-state">
+                            <p style="font-size: 32px; margin: 0 0 10px 0;">🎵</p>
+                            <p>Partitura removida.<br>Escolha outra acima.</p>
+                        </div>
+                    `;
+                }
+                loadPDFList();
+            };
+        };
+
+        window.selectPDF = async function(id) {
+            activePDFId = id;
+            loadPDFList();
+            
+            stopScrolling();
+            isPlaying = false;
+            const playBtn = document.getElementById('play-btn');
+            playBtn.textContent = 'Play';
+            playBtn.classList.remove('pause');
+            
+            const mainContent = document.getElementById('main-content');
+            const container = document.getElementById('pdf-container');
+            mainContent.scrollTop = 0;
+            container.innerHTML = '<p style="color: var(--text-secondary); margin-top: 100px;">Carregando partitura...</p>';
+
+            const transaction = db.transaction(['pdfs'], 'readonly');
+            const store = transaction.objectStore('pdfs');
+            const request = store.get(id);
+
+            request.onsuccess = async () => {
+                const record = request.result;
+                if (!record) return;
+                const arrayBuffer = await record.blob.arrayBuffer();
+                const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+                const pdf = await loadingTask.promise;
+                
+                container.innerHTML = '';
+                for (let i = 1; i <= pdf.numPages; i++) {
+                    const page = await pdf.getPage(i);
+                    const scale = 1.5;
+                    const viewport = page.getViewport({ scale });
+                    const canvas = document.createElement('canvas');
+                    const context = canvas.getContext('2d');
+                    canvas.height = viewport.height;
+                    canvas.width = viewport.width;
+                    await page.render({ canvasContext: context, viewport: viewport }).promise;
+                    container.appendChild(canvas);
+                }
+            };
+        };
+
+        const playBtn = document.getElementById('play-btn');
+        const speedInput = document.getElementById('speed');
+        const mainContent = document.getElementById('main-content');
+        const container = document.getElementById('pdf-container');
+
+        playBtn.addEventListener('click', () => {
+            if (!container.querySelector('canvas')) {
+                alert('Escolha uma partitura no menu acima.');
+                return;
+            }
+            isPlaying = !isPlaying;
+            if (isPlaying) {
+                playBtn.textContent = 'Pause';
+                playBtn.classList.add('pause');
+                startScrolling();
+            } else {
+                playBtn.textContent = 'Play';
+                playBtn.classList.remove('pause');
+                stopScrolling();
+            }
+        });
+
+        function startScrolling() {
+            if (scrollInterval) clearInterval(scrollInterval);
+            scrollInterval = setInterval(() => {
+                const speed = parseFloat(speedInput.value);
+                mainContent.scrollBy(0, speed);
+                
+                if ((mainContent.clientHeight + mainContent.scrollTop) >= mainContent.scrollHeight - 5) {
+                    stopScrolling();
+                    isPlaying = false;
+                    playBtn.textContent = 'Play';
+                    playBtn.classList.remove('pause');
+                }
+            }, 25);
+        }
+
+        function stopScrolling() {
+            if (scrollInterval) clearInterval(scrollInterval);
+        }
+    </script>
+</body>
+</html>
